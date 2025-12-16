@@ -51,6 +51,8 @@ I am a master student in Finance. My focus is in algorithmic trading strategy de
 
 Email: cc173@illinois.edu
 LinkedIn: [Charlie Chang](https://www.linkedin.com/in/charlie-chianing-chang)
+
+
 ---
 
 # 3. Introduction to VWAP-Based Strategies
