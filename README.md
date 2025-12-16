@@ -45,6 +45,12 @@ I am a senior majoring in Computer Science. My focus is in algorithmic trading a
 Email: kyahata2@illinois.edu  
 LinkedIn: [Koki Yahata](https://www.linkedin.com/in/koki-yahata)
 
+## Chia-Ning Chang
+
+I am a master student in Finance. My focus is in algorithmic trading strategy design and Portfolio Management. I develop all weather macro strategies on equities and double carry strategies on futures. I am familiar with Python.
+
+Email: cc173@illinois.edu
+LinkedIn: [Charlie Chang](https://www.linkedin.com/in/charlie-chianing-chang)
 ---
 
 # 3. Introduction to VWAP-Based Strategies
