@@ -53,6 +53,13 @@ I am a master student in Finance. My focus is in algorithmic trading strategy de
 Email: cc173@illinois.edu
 LinkedIn: [Charlie Chang](https://www.linkedin.com/in/charlie-chianing-chang)
 
+## Ansh Bardoliwala
+
+I am a master’s student in Finance at the University of Illinois Urbana-Champaign. My focus is on algorithmic trading, market microstructure, and quantitative research. 
+I work on data-driven trading strategies, order-book analysis, and transaction-cost modeling, with experience in Python-based backtesting and financial data analysis.
+
+Email: apb8@illinois.edu
+LinkedIn: [Ansh Bardoliwala](https://www.linkedin.com/in/ansh-bardoliwala-ms-finance/) 
 
 ---
 
