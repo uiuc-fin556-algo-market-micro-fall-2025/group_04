@@ -4,6 +4,7 @@
 - [2. Meet the Team](#2-meet-the-team)
   - [Koki Yahata](#koki-yahata)
   - [Chia-Ning Chang](#chia-Ning Chang)
+  - [Ansh Bardoliwala](#Ansh Bardoliwala)
 
 - [3. Introduction to VWAP-Based Strategies](#3-introduction-to-vwap-based-strategies)
   - [3.1 VWAP Mean-Reversion Signal](#31-vwap-mean-reversion-signal)
