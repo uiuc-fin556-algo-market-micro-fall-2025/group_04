@@ -45,14 +45,14 @@ We are Group 4 in FIN556, combining experience in **algorithmic trading**, **hig
 
 I am a senior majoring in Computer Science. My focus is in algorithmic trading and web3 development. I develop market making strategies and on-chain arbitrage strategies. I am familiar with Python, Rust, C++, TypeScript, and Solidity.
 
-Email: kyahata2@illinois.edu  
+Email: kyahata2@illinois.edu<br> 
 LinkedIn: [Koki Yahata](https://www.linkedin.com/in/koki-yahata)
 
 ## Chia-Ning Chang
 
 I am a master student in Finance. My focus is in algorithmic trading strategy design and Portfolio Management. I develop all weather macro strategies on equities and double carry strategies on futures. I am familiar with Python.
 
-Email: cc173@illinois.edu
+Email: cc173@illinois.edu<br>
 LinkedIn: [Charlie Chang](https://www.linkedin.com/in/charlie-chianing-chang)
 
 ## Ansh Bardoliwala
@@ -60,14 +60,14 @@ LinkedIn: [Charlie Chang](https://www.linkedin.com/in/charlie-chianing-chang)
 I am a master’s student in Finance at the University of Illinois Urbana-Champaign. My focus is on algorithmic trading, market microstructure, and quantitative research. 
 I work on data-driven trading strategies, order-book analysis, and transaction-cost modeling, with experience in Python-based backtesting and financial data analysis.
 
-Email: apb8@illinois.edu
+Email: apb8@illinois.edu<br>
 LinkedIn: [Ansh Bardoliwala](https://www.linkedin.com/in/ansh-bardoliwala-ms-finance/) 
 
 ## Howard Ding
 
 I am a senior majoring in Finance, Mathematics, and Statistics. My focus is on algorithmic trading, data science, and portfolio management. I am familiar with C++, Python, R, and SQL. 
 
-Email: howardd2@illinois.edu
+Email: howardd2@illinois.edu<br>
 LinkedIn: [Howard Ding](https://www.linkedin.com/in/hzding/) 
 
 ---
