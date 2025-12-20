@@ -64,7 +64,7 @@ LinkedIn: [Ansh Bardoliwala](https://www.linkedin.com/in/ansh-bardoliwala-ms-fin
 
 ## Howard Ding
 
-I am a senior majoring in Finance, Mathematics, and Statistics. My focus is in algorithmic trading, data science, and portfolio management. I am familiar with C++, Python, R, and SQL. 
+I am a senior majoring in Finance, Mathematics, and Statistics. My focus is on algorithmic trading, data science, and portfolio management. I am familiar with C++, Python, R, and SQL. 
 
 Email: howardd2@illinois.edu
 LinkedIn: [Howard Ding](https://www.linkedin.com/in/hzding/) 
