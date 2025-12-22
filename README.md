@@ -78,22 +78,37 @@ The **Volume-Weighted Average Price (VWAP)** is a natural benchmark for intraday
 
 From the notebook `vwap_based_strategy.ipynb`, we:
 
-- Compute a **cumulative VWAP** and rolling **1-minute** and **5-minute** VWAPs from trades.  
-- Align each trade with the nearest quote to obtain a **mid-price**, **spread in bps**, and **order book imbalance**.  
-- Define **VWAP deviation** in bps:
-$$
-\text{Deviation} = \frac{\text{Mid} - \text{VWAP}_{5\text{min}}}{\text{VWAP}_{5\text{min}}} \times 10,000 \text{ bps}
-$$
-- Classify each timestamp into signals (`STRONG_BUY`, `BUY`, `NEUTRAL`, `SELL`, `STRONG_SELL`) based on deviation thresholds and imbalance.
+* **Compute VWAP Benchmarks:** We calculate rolling **1-minute** and **5-minute** VWAPs from trade data.
+* **Calculate Metrics:** Each trade is aligned with the nearest quote to obtain a **mid-price** and **order book imbalance**.
+* **Define VWAP Deviation:** Deviation is calculated in basis points (bps) relative to the 5-minute VWAP:
 
-The signal distribution is:
+$$\text{Deviation (bps)} = \left( \frac{\text{Mid-Price}}{\text{VWAP}_{5\text{min}}} - 1 \right) \times 10,000$$
 
-- **NEUTRAL:** 66.2% of observations  
-- **BUY:** 17.5%  
-- **SELL:** 16.0%  
-- **STRONG_BUY / STRONG_SELL:** 0.1% each
+---
 
-This confirms that deviations beyond ±2 bps are relatively rare, and most of the time the mid-price stays close to VWAP.
+### Signal Generation Logic
+
+The `generate_signals` function classifies each timestamp into five categories based on a **2 bps deviation threshold** and a **±0.5 order book imbalance filter**.
+
+| Signal | Deviation from 5-min VWAP | Order Book Imbalance | Interpretation |
+| :--- | :--- | :--- | :--- |
+| **STRONG BUY** | $< -2$ bps | $> 0.5$ | Price significantly below VWAP with strong bid pressure. |
+| **BUY** | $< -2$ bps | $\leq 0.5$ | Price significantly below VWAP. |
+| **NEUTRAL** | $-2 \text{ bps} \leq \text{Dev} \leq 2 \text{ bps}$ | Any | Price is close to VWAP. |
+| **SELL** | $> 2$ bps | $\geq -0.5$ | Price significantly above VWAP. |
+| **STRONG SELL** | $> 2$ bps | $< -0.5$ | Price significantly above VWAP with strong ask pressure. |
+
+> **Note on Aggressive Signals:** We also generate more sensitive signals using a **1-minute VWAP** window and a lower threshold of **1.5 bps** to capture faster mean-reversion opportunities.
+
+---
+
+### Signal Distribution
+
+The resulting distribution highlights the rarity of extreme price-value dislocations:
+
+* **NEUTRAL:** 66.2% (The majority of the time, price tracks VWAP closely).
+* **BUY / SELL:** 17.5% and 16.0% respectively.
+* **STRONG BUY / STRONG SELL:** 0.1% each (Extreme deviations combined with high imbalance are very rare).
 
 ## 3.2 Maker vs. Taker Implementations
 
