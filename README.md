@@ -72,7 +72,7 @@ $$\text{Deviation (bps)} = \left( \frac{\text{Mid-Price}}{\text{VWAP}_{5\text{mi
 ### 3.2 Order Book Imbalance (OBI) Filter
 To prevent trading into a trending market (the "falling knife" scenario), we use OBI as a confirmation signal. OBI measures the relative buy/sell pressure at the L1 to L3 bid and ask:
 
-$$\text{OBI} = \frac{\text{Bid Size}_1-3 - \text{Ask Size}_1-3}{\text{Bid Size}_1-3 + \text{Ask Size}_1-3}$$
+$$\text{OBI} = \frac{\text{Bid Size} - \text{Ask Size}}{\text{Bid Size} + \text{Ask Size}}$$
 
 ### 3.3 Signal Matrix
 The `generate_signals` function classifies market states into five categories based on a **2 bps threshold** and a **±0.5 OBI filter**:
