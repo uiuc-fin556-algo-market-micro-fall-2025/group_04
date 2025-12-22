@@ -80,10 +80,10 @@ From the notebook `vwap_based_strategy.ipynb`, we:
 
 - Compute a **cumulative VWAP** and rolling **1-minute** and **5-minute** VWAPs from trades.  
 - Align each trade with the nearest quote to obtain a **mid-price**, **spread in bps**, and **order book imbalance**.  
-- Define **VWAP deviation** in bps:  
-  \[
-  \text{Deviation} = \frac{\text{Mid} - \text{VWAP}_{5\text{min}}}{\text{VWAP}_{5\text{min}}} \times 10,000 \text{ bps}
-  \]
+- Define **VWAP deviation** in bps:
+$$
+\text{Deviation} = \frac{\text{Mid} - \text{VWAP}_{5\text{min}}}{\text{VWAP}_{5\text{min}}} \times 10,000 \text{ bps}
+$$
 - Classify each timestamp into signals (`STRONG_BUY`, `BUY`, `NEUTRAL`, `SELL`, `STRONG_SELL`) based on deviation thresholds and imbalance.
 
 The signal distribution is:
