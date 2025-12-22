@@ -5,18 +5,18 @@
   - [Koki Yahata](#koki-yahata)
   - [Chia-Ning Chang](#chia-ning-chang)
   - [Ansh Bardoliwala](#ansh-bardoliwala)
+  - [Howard Ding](#howard-ding)
 - [3. Introduction to VWAP-Based Strategies](#3-introduction-to-vwap-based-strategies)
   - [3.1 VWAP Mean-Reversion Signal](#31-vwap-mean-reversion-signal)
-  - [3.2 Maker vs. Taker Implementations](#32-maker-vs-taker-implementations)
-- [4. Financial Instrument](#4-financial-instrument)
-- [5. Market Data Analysis](#5-market-data-analysis)
-- [6. Data Retrieval and Preprocessing](#6-data-retrieval-and-preprocessing)
-  - [6.1 Order Book Updates (Quotes)](#61-order-book-updates-quotes)
-  - [6.2 Trades and VWAP Construction](#62-trades-and-vwap-construction)
-- [7. Strategy Design and Results](#7-strategy-design-and-results)
-  - [7.1 Python Notebook Backtest (`vwap_based_strategy.ipynb`)](#71-python-notebook-backtest-vwap_based_strategyipynb)
-  - [7.2 StrategyStudio Backtest + VWAP8 Output Diagnosis](#72-strategystudio-backtest--vwap8-output-diagnosis)
-- [8. Future Implications and Improvements](#8-future-implications-and-improvements)
+  - [3.2 Order Book Imbalance (OBI) Filter](#32-order-book-imbalance-obi-filter)
+  - [3.3 Signal Matrix](#33-signal-matrix)
+- [4. Phase I: Python Research & Proof of Concept](#4-phase-i-python-research--proof-of-concept)
+- [5. Phase II: C++ Implementation & Strategy Evolution](#5-phase-ii-c-implementation--strategy-evolution)
+  - [5.1 Initial Trial: The Pure VWAP Taker (Structural Failure)](#51-initial-trial-the-pure-vwap-taker-structural-failure)
+  - [5.2 The Pivot: VWAP + OBI Maker Strategy](#52-the-pivot-vwap--obi-maker-strategy)
+- [6. Comparative Analysis: Research vs. Production](#6-comparative-analysis-research-vs-production)
+- [7. Future Implications and Improvements](#7-future-implications-and-improvements)
+
 
 ---
 
