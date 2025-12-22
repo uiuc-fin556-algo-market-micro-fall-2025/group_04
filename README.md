@@ -94,6 +94,10 @@ The `vwap_based_strategy.ipynb` notebook validated the strategy using SPY intrad
 * **Visual Validation:** Signal scatter plots confirmed that **STRONG** signals (0.1% of observations) aligned with large negative deviations and high bid-side pressure.
 * **Backtest Result:** Using a conservative maker-style simulation, the prototype produced 6 fills and a positive PnL of **$0.04**, proving that the combination of VWAP and OBI could be profitable if execution costs were minimized.
 
+![Python backtest PnL](assets/vwap_based_backest_python.png)
+
+![Python backtest inventory](assets/vwap_based_inventory.png)
+
 ---
 
 ## 5. Phase II: C++ Implementation & Strategy Evolution
