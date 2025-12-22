@@ -1,4 +1,3 @@
-# Conditional settings based on passed in variables
 ifdef INTEL
     CC=icc
 else
@@ -16,37 +15,43 @@ INCLUDEPATH=../../../includes
 
 INCLUDES=-I/usr/include -I$(INCLUDEPATH)
 LDFLAGS=$(LIBPATH)/libstrategystudio_analytics.a $(LIBPATH)/libstrategystudio.a $(LIBPATH)/libstrategystudio_transport.a $(LIBPATH)/libstrategystudio_marketmodels.a $(LIBPATH)/libstrategystudio_utilities.a $(LIBPATH)/libstrategystudio_flashprotocol.a
-LIBRARY=OFI.so
 
-SOURCES=OFI.cpp
-HEADERS=OFI.h
- 
-OBJECTS=$(SOURCES:.cpp=.o)
+LIBS=VWAP.so OFI.so VWAPOFI.so
 
-all: $(HEADERS) $(LIBRARY)
+VWAP_SOURCES=VWAP.cpp
+VWAP_HEADERS=VWAP.h
+VWAP_OBJECTS=$(VWAP_SOURCES:.cpp=.o)
 
-$(LIBRARY) : $(OBJECTS)
-	$(CC) -shared -Wl,-soname,$(LIBRARY).1 -o $(LIBRARY) $(OBJECTS) $(LDFLAGS)
-	
-.cpp.o: $(HEADERS)
+OFI_SOURCES=OFI.cpp
+OFI_HEADERS=OFI.h
+OFI_OBJECTS=$(OFI_SOURCES:.cpp=.o)
+
+VWAPOFI_SOURCES=VWAPOFI.cpp
+VWAPOFI_HEADERS=VWAPOFI.h
+VWAPOFI_OBJECTS=$(VWAPOFI_SOURCES:.cpp=.o)
+
+all: $(LIBS)
+
+VWAP.so: $(VWAP_OBJECTS)
+	$(CC) -shared -Wl,-soname,$@.1 -o $@ $(VWAP_OBJECTS) $(LDFLAGS)
+
+OFI.so: $(OFI_OBJECTS)
+	$(CC) -shared -Wl,-soname,$@.1 -o $@ $(OFI_OBJECTS) $(LDFLAGS)
+
+VWAPOFI.so: $(VWAPOFI_OBJECTS)
+	$(CC) -shared -Wl,-soname,$@.1 -o $@ $(VWAPOFI_OBJECTS) $(LDFLAGS)
+
+VWAP.o: VWAP.cpp $(VWAP_HEADERS)
+	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@
+
+OFI.o: OFI.cpp $(OFI_HEADERS)
+	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@
+
+VWAPOFI.o: VWAPOFI.cpp $(VWAPOFI_HEADERS)
 	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@
 
 clean:
-	rm -rf *.o $(LIBRARY)
+	rm -rf *.o *.so
 
 copy_strategy: all
-	cp $(LIBRARY) /student_work/kyahata2/ss/bt/strategies_dlls/.
-
-launch_backtest: 
-	#cd ~/Desktop/strategy_studio/backtesting/utilities ; ./StrategyCommandLine cmd start_backtest 2021-11-05 2021-11-05 TestTwoDiaIndexArbStrategy 1
-	cd ~/ss/bt/utilities ; ./StrategyCommandLine cmd start_backtest 2021-11-05 2021-11-05 TestOneDiaIndexArbStrategy 1
-
-run_backtest: all
-	cd ~/Downloads/ss_backtesting ; echo $PWD ; ./run_backtest.sh
-
-output_results: 
-	export CRA_RESULT=`cd ~/Downloads/ss_backtesting ; find ./backtesting-results -name 'BACK*cra' | tail -n 1` ; \
-	echo $$CRA_RESULT
-	export TEST_VAR="hi" ; \
-	echo $$TEST_VAR
-	
+	cp *.so /student_work/kyahata2/ss/bt/strategies_dlls/.
