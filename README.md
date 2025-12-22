@@ -203,7 +203,7 @@ For the **maker backtest**, we only trade on **strong** signals and simulate pas
 
 ## 7.2 StrategyStudio Backtest (VwapOfiIndex1)
 
-This section summarizes the final StrategyStudio backtest using the C++ `VWAPStrategy`. We analyzed the backtest logs (`VwapOfiIndex1`) for a run on **September 13, 2019**, covering **MSFT** and **AAPL**.
+This section summarizes the final StrategyStudio backtest using the C++. We analyzed the backtest logs (`VwapOfiIndex1`) for a run on **September 13, 2019**, covering **MSFT** and **AAPL**.
 
 ### Implementation Highlights
 
