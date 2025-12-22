@@ -54,4 +54,4 @@ clean:
 	rm -rf *.o *.so
 
 copy_strategy: all
-	cp *.so /student_work/kyahata2/ss/bt/strategies_dlls/.
+	cp *.so /student_work/howardd2/ss/bt/strategies_dlls/.
