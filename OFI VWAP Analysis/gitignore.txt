@@ -1,0 +1,38 @@
+# Generated analysis outputs (can be regenerated)
+# PNG files are now included - uncomment the line below if you want to exclude them
+# *.png
+*.jpg
+*.jpeg
+*.pdf
+
+# Analysis reports (can be regenerated)
+# Report files are now included - uncomment the line below if you want to exclude them
+# *_report.txt
+analysis_output.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Keep the source code and data files
+!analyze_trading_data.py
+!*.csv
