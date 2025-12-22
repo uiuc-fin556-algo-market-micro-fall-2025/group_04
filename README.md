@@ -3,9 +3,8 @@
 - [1. Executive Summary](#1-executive-summary)
 - [2. Meet the Team](#2-meet-the-team)
   - [Koki Yahata](#koki-yahata)
-  - [Chia-Ning Chang](#chia-Ning Chang)
-  - [Ansh Bardoliwala](#Ansh Bardoliwala)
-
+  - [Chia-Ning Chang](#chia-ning-chang)
+  - [Ansh Bardoliwala](#ansh-bardoliwala)
 - [3. Introduction to VWAP-Based Strategies](#3-introduction-to-vwap-based-strategies)
   - [3.1 VWAP Mean-Reversion Signal](#31-vwap-mean-reversion-signal)
   - [3.2 Maker vs. Taker Implementations](#32-maker-vs-taker-implementations)
@@ -21,17 +20,10 @@
 
 ---
 
-# 1. Executive Summary
+## 1. Executive Summary
+This project chronicles the evolution of a high-frequency trading (HFT) strategy from theoretical research to an event-driven production environment. Our strategy exploits short-lived price dislocations from the **Volume-Weighted Average Price (VWAP)**.
 
-This project focuses on designing and evaluating a **high-frequency VWAP-based trading strategy**. In the Python research notebook we use **SPY** (2020‑02‑12) as a concrete example dataset, while the StrategyStudio C++ strategy is instrument-agnostic and runs on any configured symbol list with valid trade/quote data. The core idea is to exploit **short-lived deviations between the mid-price and a rolling VWAP**, under the assumption that prices tend to revert toward VWAP over short horizons. Using intraday **order book updates** (323,759 quotes) and **trades** (6,127 prints) from the SPY sample day, we build a microstructure-aware signal that combines:
-
-- Deviation of the mid-price from a **5-minute rolling VWAP** in basis points (bps), and
-- **Order book imbalance** as a confirmation of buy or sell pressure.
-
-We ran **two backtests of two different strategies**:
-
-- **Python notebook backtest (`vwap_based_strategy.ipynb`)**: a research prototype that generates VWAP/imbalance signals and simulates a **maker-style** execution model (resting limit orders at best bid/ask) under conservative “strong signal only” criteria. It produced only **6 fills** and a small positive PnL of about **\$0.04**.
-- **StrategyStudio C++ backtest (`src/VWAP.cpp`)**: a different strategy implementation that trades VWAP deviation as a **taker** using **market orders**, scaling inventory up to a cap and exiting when deviation crosses back through zero. The VWAP8 log analysis shows a **large negative PnL (~–\$86k)** with near-monotonic drawdown, dominated by aggressive execution costs and adverse selection.
+Through rigorous backtesting, we discovered that while the VWAP signal is statistically sound, the execution model is the primary driver of profitability. Our initial C++ implementation—a **"Taker" model** using pure VWAP—resulted in massive losses due to spread-crossing costs. By incorporating the **Order Book Imbalance (OBI)** filter identified in our Python research and pivoting to a **"Maker" execution style**, we successfully neutralized these costs. This report highlights the transition from a research prototype on SPY to a multi-asset C++ system (StrategyStudio) running on MSFT and AAPL.
 
 ---
 
@@ -39,19 +31,18 @@ We ran **two backtests of two different strategies**:
 
 We are Group 4 in FIN556, combining experience in **algorithmic trading**, **high-performance systems**, and **machine learning**.
 
-
 ## Koki Yahata
 
 I am a senior majoring in Computer Science. My focus is in algorithmic trading and web3 development. I develop market making strategies and on-chain arbitrage strategies. I am familiar with Python, Rust, C++, TypeScript, and Solidity.
 
-Email: kyahata2@illinois.edu  
+Email: kyahata2@illinois.edu<br> 
 LinkedIn: [Koki Yahata](https://www.linkedin.com/in/koki-yahata)
 
 ## Chia-Ning Chang
 
 I am a master student in Finance. My focus is in algorithmic trading strategy design and Portfolio Management. I develop all weather macro strategies on equities and double carry strategies on futures. I am familiar with Python.
 
-Email: cc173@illinois.edu
+Email: cc173@illinois.edu<br>
 LinkedIn: [Charlie Chang](https://www.linkedin.com/in/charlie-chianing-chang)
 
 ## Ansh Bardoliwala
@@ -59,232 +50,87 @@ LinkedIn: [Charlie Chang](https://www.linkedin.com/in/charlie-chianing-chang)
 I am a master’s student in Finance at the University of Illinois Urbana-Champaign. My focus is on algorithmic trading, market microstructure, and quantitative research. 
 I work on data-driven trading strategies, order-book analysis, and transaction-cost modeling, with experience in Python-based backtesting and financial data analysis.
 
-Email: apb8@illinois.edu
+Email: apb8@illinois.edu<br>
 LinkedIn: [Ansh Bardoliwala](https://www.linkedin.com/in/ansh-bardoliwala-ms-finance/) 
 
----
+## Howard Ding
 
-# 3. Introduction to VWAP-Based Strategies
+I am a senior majoring in Finance, Mathematics, and Statistics. My focus is on algorithmic trading, data science, and portfolio management. I am familiar with C++, Python, R, and SQL. 
 
-## 3.1 VWAP Mean-Reversion Signal
-
-The **Volume-Weighted Average Price (VWAP)** is a natural benchmark for intraday trading because it incorporates both **price** and **traded volume**. Our strategy assumes that when the observed mid-price drifts significantly away from a short-horizon VWAP, it is likely to **mean revert** in the near future.
-
-From the notebook `vwap_based_strategy.ipynb`, we:
-
-- Compute a **cumulative VWAP** and rolling **1-minute** and **5-minute** VWAPs from trades.  
-- Align each trade with the nearest quote to obtain a **mid-price**, **spread in bps**, and **order book imbalance**.  
-- Define **VWAP deviation** in bps:  
-  \[
-  \text{Deviation} = \frac{\text{Mid} - \text{VWAP}_{5\text{min}}}{\text{VWAP}_{5\text{min}}} \times 10,000 \text{ bps}
-  \]
-- Classify each timestamp into signals (`STRONG_BUY`, `BUY`, `NEUTRAL`, `SELL`, `STRONG_SELL`) based on deviation thresholds and imbalance.
-
-The signal distribution is:
-
-- **NEUTRAL:** 66.2% of observations  
-- **BUY:** 17.5%  
-- **SELL:** 16.0%  
-- **STRONG_BUY / STRONG_SELL:** 0.1% each
-
-This confirms that deviations beyond ±2 bps are relatively rare, and most of the time the mid-price stays close to VWAP.
-
-## 3.2 Maker vs. Taker Implementations
-
-We explored two ways of turning the VWAP signal into trades:
-
-- **Notebook Maker Prototype (Limit Orders):**  
-  - Only **STRONG BUY** and **STRONG SELL** signals are used.  
-  - When flat and a strong signal appears, we **rest a limit order** at the best bid (for long) or best ask (for short).  
-  - A fill occurs if the next trade prints through our limit price.  
-  - Inventory is tightly controlled (targeting flat) and the maximum inventory is capped at 10 units.
-
-- **StrategyStudio VWAPStrategy / VWAP8 (Market Orders):**  
-  - Implemented in C++ (`VWAP.h` / `VWAP.cpp`) using RCM StrategyStudio.  
-  - Uses **OnTrade** events to update a 5-minute rolling VWAP, combined with top-of-book quotes for mid-price.  
-  - Signals are interpreted in a **taker-style** manner: when deviation crosses the entry threshold and inventory is below a cap, we send **market orders** (aggressively crossing the spread).  
-  - Positions are exited when the deviation reverts toward zero (price crosses back through VWAP).
-
-**Important note (strategy difference):** the Python notebook strategy and the C++ StrategyStudio strategy are not identical. The notebook backtest is a conservative, low-turnover **maker-style** prototype; the StrategyStudio `VWAPStrategy` in `src/VWAP.cpp` is a high-turnover **market-order taker** that can scale position (up to `max_inventory`) and therefore experiences very different execution frictions.
+Email: howardd2@illinois.edu<br>
+LinkedIn: [Howard Ding](https://www.linkedin.com/in/hzding/) 
 
 ---
 
-# 4. Financial Instrument
+## 3. Strategy Methodology
 
-The **StrategyStudio C++ implementation** (`src/VWAP.cpp`) is **not limited to a single instrument**; it registers for events across the configured symbol list and can be run on any instrument for which the backtest provides valid trades/quotes.
+### 3.1 VWAP Mean-Reversion Signal
+The VWAP serves as the intraday benchmark for "fair value." Our strategy assumes that when the mid-price drifts significantly from the rolling 5-minute VWAP, it is likely to mean-revert. We calculate VWAP Deviation in basis points (bps):
 
-In our **Python notebook backtest**, we use **SPY** intraday data as a concrete, liquid example to study VWAP deviation behavior and prototype a maker-style execution model. The analysis and plots in Sections 5–7.1 therefore reflect the SPY sample day, while the StrategyStudio section (7.2) is about the strategy behavior and execution mechanics more generally.
+$$\text{Deviation (bps)} = \left( \frac{\text{Mid-Price}}{\text{VWAP}_{5\text{min}}} - 1 \right) \times 10,000$$
 
----
+### 3.2 Order Book Imbalance (OBI) Filter
+To prevent trading into a trending market (the "falling knife" scenario), we use OBI as a confirmation signal. OBI measures the relative buy/sell pressure at the best bid and ask:
 
-# 5. Market Data Analysis
+$$\text{OBI} = \frac{\text{Bid Size}_1 - \text{Ask Size}_1}{\text{Bid Size}_1 + \text{Ask Size}_1}$$
 
-The `vwap_based_strategy.ipynb` notebook performs several diagnostic analyses:
+### 3.3 Signal Matrix
+The `generate_signals` function classifies market states into five categories based on a **2 bps threshold** and a **±0.5 OBI filter**:
 
-- **Price vs. VWAP Over Time:**  
-  A figure compares trade prices against cumulative and 5-minute rolling VWAP. Visually, the trade price oscillates around VWAP, with deviations mostly within **±10 bps**, reinforcing the idea of short-term mean reversion but also highlighting how small the edge is in absolute terms.
-
-- **Distribution of VWAP Deviations:**  
-  A histogram of 5-minute deviation shows a roughly centered distribution with standard deviation around **2.38 bps**, and thresholds at ±2 bps capturing the outer tails of normal microstructure noise.
-
-- **VWAP Deviation Over Time:**  
-  Time-series plots of deviation, with horizontal lines at ±2 bps, show that **strong signals** are clustered and infrequent. Most of the intraday period sits in the neutral band.
-
-- **Order Book Imbalance Over Time:**  
-  The imbalance plot, shading positive (bid pressure) vs. negative (ask pressure), reveals alternating regimes of buy and sell pressure. This series is used as a **filter**, not a primary signal, to avoid trading mean-reversion in the wrong direction.
-
-- **Signal Scatter Plot (Deviation vs. Imbalance):**  
-  A scatter of deviation vs. imbalance, colored by signal label, visually confirms that **STRONG BUY** points lie in the lower-left quadrant (large negative deviation + strong bid pressure) and **STRONG SELL** points lie in the upper-right (large positive deviation + strong ask pressure), matching our economic intuition.
-
-Together, these plots demonstrate that the VWAP-based signal is **statistically coherent** but operates on **very small price edges** relative to spread and fees—making execution model choice (maker vs taker) a first-order driver of realized performance.
+| Signal | Deviation | OBI Filter | Interpretation |
+| :--- | :--- | :--- | :--- |
+| **STRONG BUY** | $< -2$ bps | $> 0.5$ | Undervalued with strong bid pressure |
+| **BUY** | $< -2$ bps | $\leq 0.5$ | Undervalued |
+| **NEUTRAL** | $[-2, 2]$ bps | Any | Equilibrium price |
+| **SELL** | $> 2$ bps | $\geq -0.5$ | Overvalued |
+| **STRONG SELL** | $> 2$ bps | $< -0.5$ | Overvalued with strong ask pressure |
 
 ---
 
-# 6. Data Retrieval and Preprocessing
+## 4. Phase I: Python Research & Proof of Concept
+The `vwap_based_strategy.ipynb` notebook validated the strategy using SPY intraday data.
 
-## 6.1 Order Book Updates (Quotes)
-
-The quote data (`20200212_book_updates.csv.gz`) contains best bid/ask prices and sizes (and deeper levels for some analyses). Preprocessing steps in the notebook include:
-
-- Parsing timestamps into `COLLECTION_TIME` and sorting by time.  
-- Computing:  
-  - **Mid-price:** \((\text{Bid}_1 + \text{Ask}_1) / 2\)  
-  - **Spread (dollars and bps)**  
-  - **Weighted mid-price** using the top three bid/ask levels  
-  - **Bid/ask liquidity** and **order book imbalance**  
-- Sampling quotes for plotting to keep visualizations readable while preserving intraday structure.
-
-These features feed into both **signal generation** and diagnostic plots such as spread over time and imbalance heatmaps.
-
-## 6.2 Trades and VWAP Construction
-
-The trade data (`20200212_trades.csv.gz`) is used to compute:
-
-- **Cumulative VWAP** from the start of the session, via running sums of price × size and volume.  
-- **Rolling VWAPs** over 1-minute and 5-minute windows by filtering trades within a moving time window for each timestamp.  
-- **Merged Trade–Quote Dataset** using `merge_asof`, aligning each trade to the latest quote to attach mid-price, spread, and imbalance.
-
-From this merged dataset, we derive:
-
-- **VWAP deviation** for multiple horizons (cumulative, 5-minute, 1-minute).  
-- **Price momentum and percentage price changes.**  
-- **Signal labels** (`STRONG_BUY`, `BUY`, `NEUTRAL`, `SELL`, `STRONG_SELL`) based on deviation and imbalance thresholds.  
-
-The notebook also exports **`vwap_trading_signals.csv`** for later inspection and downstream backtesting.
+* **Statistical Coherence:** The 5-minute deviation showed a centered distribution ($\sigma \approx 2.38$ bps). The ±2 bps threshold successfully captured the "outer tails" where mean reversion is most likely.
+* **Visual Validation:** Signal scatter plots confirmed that **STRONG** signals (0.1% of observations) aligned with large negative deviations and high bid-side pressure.
+* **Backtest Result:** Using a conservative maker-style simulation, the prototype produced 6 fills and a positive PnL of **$0.04**, proving that the combination of VWAP and OBI could be profitable if execution costs were minimized.
 
 ---
 
-# 7. Strategy Design and Results
+## 5. Phase II: C++ Implementation & Strategy Evolution
 
-## 7.1 Python Notebook Backtest (`vwap_based_strategy.ipynb`)
+### 5.1 Initial Trial: The Pure VWAP Taker (Structural Failure)
+In our first C++ iteration in StrategyStudio, we implemented a pure VWAP signal using Market Orders (Taker style).
 
-This section summarizes the backtest implemented in the Python notebook **`vwap_based_strategy.ipynb`** (research prototype).
+* **The Result:** The strategy suffered a catastrophic negative drift of approximately **–$86,000**.
+* **The Lesson:** At the HFT scale, crossing the bid-ask spread to "take" liquidity is prohibitively expensive. The alpha signal was completely overwhelmed by transaction costs.
 
-### Strategy (Python): VWAP + Imbalance → Maker-style limit orders
-
-Using VWAP signals computed from trades, we create discrete labels (`STRONG_BUY`, `BUY`, `NEUTRAL`, `SELL`, `STRONG_SELL`) based on:
-
-- **Deviation threshold**: ±2 bps vs the **5-minute rolling VWAP**
-- **Confirmation filter**: order book imbalance \(> 0.5\) for strong buy, \(< -0.5\) for strong sell
-
-For the **maker backtest**, we only trade on **strong** signals and simulate passive execution:
-
-- Enters only on **strong signals** (\(|\text{Deviation}| > 2 \text{ bps}\) and \(|\text{Imbalance}| > 0.5\)).  
-- Places a **single-unit limit order** at the **best bid** (for `STRONG_BUY`) or **best ask** (for `STRONG_SELL`) when inventory is flat.  
-- Considers the order **filled** if the next trade occurs at or through the limit price.  
-- Prioritizes **liquidation**: if inventory is non-zero, it always places a closing limit order at the opposite side (best ask for long, best bid for short) before taking new signals.
-
-### Results (Python backtest)
-
-- **Total fills:** 6 trades  
-- **Final inventory:** 0  
-- **Total PnL:** approximately **\$0.04**  
-
-The PnL is small because the entry conditions are extremely selective: **only 0.1%** of timestamps are `STRONG_BUY` and **0.1%** are `STRONG_SELL`, resulting in very low turnover.
-
-![Python backtest PnL](assets/vwap_based_backest_python.png)
-
-![Python backtest inventory](assets/vwap_based_inventory.png)
-
-## 7.2 StrategyStudio Backtest + VWAP8 Output Diagnosis
-
-This section summarizes the StrategyStudio backtest of the **C++ `VWAPStrategy`** (`src/VWAP.cpp`) and uses **`research/VWAP8 Strategy_Analysis.ipynb`** to diagnose the generated `order.csv`, `fill.csv`, and `pnl.csv` logs.
-
-### Implementation Highlights
-
-- **VWAP Calculation:**  
-  - Maintains a rolling **5-minute deque** (`VWAPTradeRecord`) of trade price/volume.  
-  - On each trade, it updates cumulative price×volume and volume and prunes outdated trades.  
-  - VWAP is available whenever there are at least a few trades or at least 60 seconds of history.
-
-- **Signal and Execution Logic:**  
-  - Triggered on **OnTrade** events to ensure VWAP uses actual transactions.  
-  - Uses top-of-book quotes to compute the **mid-price** and deviation from the rolling VWAP in bps.  
-  - **Entry**: when deviation is below \(-\text{entry\_threshold\_bps}\) → **market BUY**; above \(+\text{entry\_threshold\_bps}\) → **market SELL**, while \(|\text{position}| < \text{max\_inventory}\).  
-  - **Exit**: when holding long and deviation crosses back to \(\ge 0\) (or holding short and deviation crosses back to \(\le 0\)), the strategy targets flat.
-
-- **Parameters (typical run):**  
-  - `vwap_window_seconds = 300` (5 minutes)  
-  - `entry_threshold_bps` is runtime-configurable (default in code is **0.1 bps**, which makes trading very frequent unless raised)  
-  - `max_inventory ≈ 5`  
-  - `position_size = 1` share per trade  
-
-### VWAP8 Analysis: PnL, Fills, and Execution
-
-The notebook `VWAP8 Strategy_Analysis.ipynb` analyzes the **order**, **fill**, and **PnL** logs:
-
-- **PnL Behavior:**  
-  - The cumulative PnL starts around –\$369 and ends around **–\$86,429**, for a total loss of roughly **–\$86k**.  
-  - The **max drawdown** is essentially the same magnitude, indicating a near-monotonic bleed with no sustained recovery.  
-  - Incremental PnL is heavily skewed negative, with a low win rate (~20%) and occasional large negative outliers.
-
-![StrategyStudio VWAP8 cumulative PnL](assets/cumulative_pnl.png)
-
-![StrategyStudio VWAP8 drawdown](assets/drawdown.png)
-
-- **Execution Mechanics:**  
-  - There are **9,826 fills** and the same number of orders, confirming the strategy trades very frequently.  
-  - Almost all fills are classified as **liquidity removing** (crossing the spread), incurring spread costs and fees on every trade.  
-  - Execution cost per minute and the count of “REMOVED” fills per minute are **positively associated with negative PnL**, i.e., the more aggressively we trade, the worse the outcome.
-
-![StrategyStudio VWAP8 incremental PnL](assets/incremental_pnl_per_timestamp.png)
-
-![StrategyStudio VWAP8 incremental PnL distribution](assets/distribution_incremental_pnl.png)
-
-- **Intraday and Minute-Level Diagnostics:**  
-  - Losses are spread across the entire session, with clusters during mid-to-late hours.  
-  - Minute-by-minute analysis shows that the **worst PnL minutes** coincide with high trading intensity and high execution costs.  
-  - The alignment of fills to per-minute PnL reveals that adverse selection and spread crossing, not rare shocks, drive the majority of the loss.
-
-**Conclusion:** While the VWAP deviation signal is statistically reasonable, the **aggressive HFT implementation (VWAP8) is structurally unprofitable** in this configuration. Small 1–3 bps edges are overwhelmed by spread, fees, and adverse selection when trading at high frequency with market orders.
+### 5.2 The Pivot: VWAP + OFI Maker Strategy
+Applying the insights from our Python research, we refined the C++ strategy (`src/VWAP.cpp`) with two major changes:
+1.  **Added OBI Filter:** We restricted entries to points where order book imbalance confirmed the mean-reversion signal.
+2.  **Pivoted to Maker Style:** The strategy was rewritten to use Limit Orders. Instead of paying the spread, the strategy now "rests" orders at the best bid/ask to capture the spread (`LiquidityAction: ADDED`).
 
 ---
 
-# 8. Future Implications and Improvements
+## 6. Comparative Analysis: Research vs. Production
+The final backtest on MSFT and AAPL (2019-09-13) demonstrated the success of the execution pivot.
 
-The combined evidence from the research notebooks and StrategyStudio backtests suggests several lessons and future directions:
+| Metric | Python (Research - SPY) | StrategyStudio (Production - MSFT/AAPL) |
+| :--- | :--- | :--- |
+| **Execution Style** | Simulated Maker | Active Event-Driven Maker |
+| **Total Fills** | 6 | 65 |
+| **Execution Cost** | Negligible | **$0.19** (Successfully neutralized) |
+| **Net PnL** | +$0.04 | **–$2.85** |
+| **Fill Rate** | N/A | ~89% |
 
-1. **Signal vs. Execution:**  
-   - A clean theoretical signal (VWAP mean reversion) is not enough at HFT horizons.  
-   - Execution style (limit vs. market) and microstructure frictions dominate realized PnL when signals operate at the 1–5 bps scale.
+**Analysis:**
+The C++ implementation successfully "plugged the cost leak." Total execution costs dropped from thousands in the Taker model to just **$0.19**. While the PnL remained slightly negative (–$2.85), the strategy stayed effectively flat across 65 trades, representing a massive improvement over the initial Taker version. 
 
-2. **Trading Intensity and Cost Control:**  
-   - VWAP8’s large negative PnL stems from **overtrading with market orders** and systematically removing liquidity.  
-   - Future versions should throttle trade frequency, incorporate **spread and volatility filters**, and prefer **maker-style entries** where feasible.
+The remaining loss is attributed to **Adverse Selection (Toxic Fills)**—a common HFT challenge where limit orders are filled precisely when the price is about to crash through the quote level.
 
-3. **Dynamic Thresholds and Regime Awareness:**  
-   - Static ±2 bps thresholds are fragile; adaptive thresholds based on recent volatility or spread could better target true dislocations.  
-   - Regime filters (e.g., avoiding high-volatility spikes or very wide spreads) can prevent trading when VWAP is itself unstable.
+---
 
-4. **Risk Management Extensions:**  
-   - Add **hard stop-losses**, **max drawdown limits**, and **time-based exits** to prevent long periods of unbounded loss.  
-   - Incorporate portfolio-level inventory caps if trading multiple symbols.
-
-5. **Research Roadmap:**  
-   - Explore hybrid strategies that **enter passively (maker)** on VWAP deviations but use **taker-style exits** only when necessary.  
-   - Combine VWAP with other microstructure signals (e.g., imbalance dynamics, short-term momentum) to improve edge quality.  
-   - Use the existing VWAP8 analysis framework (orders → fills → PnL) as a template for systematically debugging future HFT strategies.
-
-Overall, this Version 1 report documents our path from a **statistically appealing VWAP signal** to a **fully implemented HFT strategy**, highlighting both what worked (signal design, tooling, diagnostics) and what failed (aggressive execution without sufficient cost control). It sets the stage for more robust VWAP-based strategies in future iterations of the project.
-
-
+## 7. Future Implications and Improvements
+* **Solve Adverse Selection:** Incorporate Micro-Price or high-frequency momentum indicators to cancel resting orders before "toxic" fills occur.
+* **Dynamic Thresholds:** Replace the static ±2 bps threshold with an adaptive threshold that scales with rolling market volatility.
+* **Inventory Management:** The observed ~$56 drawdown suggests the need for tighter stop-losses or time-based inventory dumps to prevent holding positions during adverse trends.
+* **Signal Expansion:** Use deeper order book levels (L2/L3) to calculate a more robust "weighted" imbalance signal.
