@@ -98,7 +98,6 @@ The `generate_signals` function classifies each timestamp into five categories b
 | **SELL** | $> 2$ bps | $\geq -0.5$ | Price significantly above VWAP. |
 | **STRONG SELL** | $> 2$ bps | $< -0.5$ | Price significantly above VWAP with strong ask pressure. |
 
-> **Note on Aggressive Signals:** We also generate more sensitive signals using a **1-minute VWAP** window and a lower threshold of **1.5 bps** to capture faster mean-reversion opportunities.
 
 ---
 
