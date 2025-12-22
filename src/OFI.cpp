@@ -30,9 +30,13 @@
 #include <Utilities/Cast.h>
 #include <Utilities/utils.h>
 
-#include <math.h>
+#include <boost/date_time/posix_time/posix_time.hpp>
+
+#include <cmath>
 #include <iostream>
+#include <sstream>
 #include <cassert>
+#include <algorithm>
 
 using namespace RCM::StrategyStudio;
 using namespace RCM::StrategyStudio::MarketModels;
@@ -40,25 +44,19 @@ using namespace RCM::StrategyStudio::Utilities;
 
 using namespace std;
 
-OFIStrategy::OFIStrategy(StrategyID strategyID, const std::string& strategyName, const std::string& groupName):
+
+OFIStrategy::OFIStrategy(StrategyID strategyID, const std::string& strategyName, const std::string& groupName) :
     Strategy(strategyID, strategyName, groupName),
-    m_momentum_map(),
-	m_tradeprice_map(),
-    m_instrument_order_id_map(),
-    m_momentum(0),
-    m_aggressiveness(0),
-    m_position_size(100),
-    m_debug_on(true),
-    m_short_window_size(10),
-    m_long_window_size(30),
-	m_dia_last_trade_price(0),
-	m_average_dia_ratio(0.0),
-	m_num_dia_ratio_observations(0)
+    ofi_state_(),
+    ofi_window_seconds_(60),
+    min_events_required_(10),
+    entry_threshold_(0.25),
+    impact_multiplier_(1.0),
+    max_spread_bps_(25.0),
+    max_inventory_(5),
+    position_size_(1),
+    debug_(true)
 {
-    //this->set_enabled_pre_open_data_flag(true);
-    //this->set_enabled_pre_open_trade_flag(true);
-    //this->set_enabled_post_close_data_flag(true);
-    //this->set_enabled_post_close_trade_flag(true);
 }
 
 OFIStrategy::~OFIStrategy()
@@ -67,172 +65,183 @@ OFIStrategy::~OFIStrategy()
 
 void OFIStrategy::OnResetStrategyState()
 {
-    m_momentum_map.clear();
-    m_instrument_order_id_map.clear();
-    m_momentum = 0;
+    for (auto& kv : ofi_state_) {
+        kv.second.Reset();
+    }
+    ofi_state_.clear();
 }
 
 void OFIStrategy::DefineStrategyParams()
 {
-    CreateStrategyParamArgs arg1("aggressiveness", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_DOUBLE, m_aggressiveness);
-    params().CreateParam(arg1);
-
-    CreateStrategyParamArgs arg2("position_size", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_INT, m_position_size);
-    params().CreateParam(arg2);
-
-    CreateStrategyParamArgs arg3("short_window_size", STRATEGY_PARAM_TYPE_STARTUP, VALUE_TYPE_INT, m_short_window_size);
-    params().CreateParam(arg3);
-    
-    CreateStrategyParamArgs arg4("long_window_size", STRATEGY_PARAM_TYPE_STARTUP, VALUE_TYPE_INT, m_long_window_size);
-    params().CreateParam(arg4);
-    
-    CreateStrategyParamArgs arg5("debug", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_BOOL, m_debug_on);
-    params().CreateParam(arg5);
+    params().CreateParam(CreateStrategyParamArgs("ofi_window_seconds", STRATEGY_PARAM_TYPE_STARTUP, VALUE_TYPE_INT, ofi_window_seconds_));
+    params().CreateParam(CreateStrategyParamArgs("min_events_required", STRATEGY_PARAM_TYPE_STARTUP, VALUE_TYPE_INT, min_events_required_));
+    params().CreateParam(CreateStrategyParamArgs("entry_threshold", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_DOUBLE, entry_threshold_));
+    params().CreateParam(CreateStrategyParamArgs("impact_multiplier", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_DOUBLE, impact_multiplier_));
+    params().CreateParam(CreateStrategyParamArgs("max_spread_bps", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_DOUBLE, max_spread_bps_));
+    params().CreateParam(CreateStrategyParamArgs("max_inventory", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_INT, max_inventory_));
+    params().CreateParam(CreateStrategyParamArgs("position_size", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_INT, position_size_));
+    params().CreateParam(CreateStrategyParamArgs("debug", STRATEGY_PARAM_TYPE_RUNTIME, VALUE_TYPE_BOOL, debug_));
 }
 
 void OFIStrategy::DefineStrategyCommands()
 {
-    StrategyCommand command1(1, "Reprice Existing Orders");
-    commands().AddCommand(command1);
-
-    StrategyCommand command2(2, "Cancel All Orders");
-    commands().AddCommand(command2);
+    commands().AddCommand(StrategyCommand(1, "Cancel All Orders"));
+    // commands().AddCommand(StrategyCommand(2, "Flatten (Cancel + Close)"));
 }
 
 void OFIStrategy::RegisterForStrategyEvents(StrategyEventRegister* eventRegister, DateType currDate)
-{    
-    for (SymbolSetConstIter it = symbols_begin(); it != symbols_end(); ++it)
-    {
-        eventRegister->RegisterForBars(*it, BAR_TYPE_TIME, 10);
+{
+    // We rely on TopQuote to compute OFI at the best bid/ask.
+    // Register for each symbol configured for this strategy instance.
+    for (auto it = symbols_begin(); it != symbols_end(); ++it) {
+        eventRegister->RegisterForFutures(*it);
     }
 }
-void OFIStrategy::OnTrade(const TradeDataEventMsg& msg)
-{
-	std::cout << "OnTrade(): (" << msg.adapter_time() << "): " << msg.instrument().symbol() << ": " << msg.trade().size() << " @ $" << msg.trade().price(); // << std::endl;
-	/*
-	std::cout << "\t " <<
-				msg.instrument().top_quote().bid_size() << " @ $"<< msg.instrument().top_quote().bid() <<
-				msg.instrument().top_quote().ask_size() << " @ $"<< msg.instrument().top_quote().ask() <<
-				std::endl;
-	*/
-
-	//add latest price to the map
-	if ( msg.instrument().symbol().compare("DIA")!=0)
-	{
-		m_tradeprice_map[msg.instrument().symbol()] = msg.trade().price();
-	}
-	else
-	{
-		m_dia_last_trade_price = msg.trade().price();
-	}
-//	std::cout << "\t Dumping all symbols; has " << m_tradeprice_map.size() << "elements" << std::endl;
-
-
-	double djia_index = 0;
-	for (TradePriceMapIterator iter = m_tradeprice_map.begin(); iter!=m_tradeprice_map.end(); ++iter)
-	{
-//		std::cout << "\t\t" << (iter->first) << ": $" << iter->second << std::endl;
-		djia_index += iter->second;
-	}
-
-	if (m_dia_last_trade_price!=0 and m_tradeprice_map.size()==31)
-	{
-		double ratio = djia_index / m_dia_last_trade_price;
-
-		//update average ratio stats
-		double new_average_ratio = ((m_average_dia_ratio*m_num_dia_ratio_observations) + ratio) / (m_num_dia_ratio_observations+1);
-
-
-		std::cout << "; \t Dumping all symbols; " << // << m_tradeprice_map.size() << "elements; " <<
-				"sum is " << djia_index <<
-				" DIA last trade price is $" << m_dia_last_trade_price <<
-				" ratio is " << ratio << //<< std::endl;
-				" previous average ratio was " << m_average_dia_ratio <<
-				" new average ratio is " << new_average_ratio;
-
-		m_average_dia_ratio = new_average_ratio;
-		m_num_dia_ratio_observations++;
-	}
-	std::cout << std::endl;
-
-}
-
-//TODO: need to fix the data source to get these three callbacks working
 
 void OFIStrategy::OnTopQuote(const QuoteEventMsg& msg)
 {
-	std::cout << "OnTopQuote(): (" << msg.adapter_time() << "): " << msg.instrument().symbol() << ": " <<
-		msg.instrument().top_quote().bid_size() << " @ $"<< msg.instrument().top_quote().bid() <<
-		msg.instrument().top_quote().ask_size() << " @ $"<< msg.instrument().top_quote().ask() <<
-		std::endl;
+    const Instrument* instr = &msg.instrument();
+    const Quote& top_quote = instr->top_quote();
 
-}
-
-void OFIStrategy::OnQuote(const QuoteEventMsg& msg)
-{
-	std::cout << "OnQuote(): (" << msg.adapter_time() << "): " << msg.instrument().symbol() << ": " <<
-			msg.instrument().top_quote().bid_size() << " @ $"<< msg.instrument().top_quote().bid() <<
-			msg.instrument().top_quote().ask_size() << " @ $"<< msg.instrument().top_quote().ask() <<
-			std::endl;
-}
-
-void OFIStrategy::OnDepth(const MarketDepthEventMsg& msg)
-{
-	std::cout << "OnDepth(): (" << msg.adapter_time() << "): " << msg.instrument().symbol() << ": " <<
-				msg.instrument().top_quote().bid_size() << " @ $"<< msg.instrument().top_quote().bid() <<
-				msg.instrument().top_quote().ask_size() << " @ $"<< msg.instrument().top_quote().ask() <<
-				std::endl;
-}
-
-void OFIStrategy::OnBar(const BarEventMsg& msg)
-{
-	/*
-    if (m_debug_on) {
-        ostringstream str;
-        str << "FINDME" << msg.instrument().symbol() << ": " << msg.bar();
-        logger().LogToClient(LOGLEVEL_DEBUG, str.str().c_str());
-        //std::cout << str.str().c_str() << std::endl;
+    if (!IsQuoteValid(top_quote)) {
+        return;
     }
 
-    if(msg.bar().close() < .01) return;
+    // 1) Update OFI state for this instrument
+    OFIInstrumentState& state = ofi_state_[instr];
 
+    const double bid = top_quote.bid();
+    const double ask = top_quote.ask();
+    const int bid_size = top_quote.bid_size();
+    const int ask_size = top_quote.ask_size();
 
-    //check if we're already tracking the momentum object for this instrument, if not create a new one
-    MomentumMapIterator iter = m_momentum_map.find(&msg.instrument());
-    if (iter != m_momentum_map.end()) {
-        m_momentum = &iter->second;
-    } else {
-        m_momentum = &m_momentum_map.insert(make_pair(&msg.instrument(),Momentum(m_short_window_size,m_long_window_size))).first->second;
+    if (!state.initialized) {
+        state.initialized = true;
+        state.prev_bid = bid;
+        state.prev_ask = ask;
+        state.prev_bid_size = bid_size;
+        state.prev_ask_size = ask_size;
+        return;
     }
 
-    DesiredPositionSide side = m_momentum->Update(msg.bar().close());
+    // 2) Compute OFI increment from consecutive top-of-book snapshots
+    const double ofi_inc = ComputeOFIIncrement(state, bid, bid_size, ask, ask_size);
 
-    if(m_momentum->FullyInitialized()) {
-//        AdjustPortfolio(&msg.instrument(), m_position_size * side);
+    // 3) Add to rolling window + prune
+    AddEventToWindow(state, ofi_inc, msg.event_time());
+
+    boost::posix_time::time_duration window_duration = boost::posix_time::seconds(ofi_window_seconds_);
+    Utilities::TimeType cutoff_time = msg.event_time() - window_duration;
+    PruneOldEvents(state, cutoff_time);
+
+    // 4) Update previous snapshot for next event
+    state.prev_bid = bid;
+    state.prev_ask = ask;
+    state.prev_bid_size = bid_size;
+    state.prev_ask_size = ask_size;
+
+    // 5) Guardrails: window readiness and spread filter
+    if (!IsOFIReady(state)) {
+        if (debug_) {
+            ostringstream oss;
+            oss << instr->symbol() << " | OFI window not ready (n=" << state.window.size() << ")";
+            logger().LogToClient(LOGLEVEL_DEBUG, oss.str());
+        }
+        return;
     }
-    */
+
+    const double spread_bps = CalculateSpreadBps(top_quote);
+    if (max_spread_bps_ > 0.0 && spread_bps > max_spread_bps_) {
+        if (debug_) {
+            ostringstream oss;
+            oss << instr->symbol() << " | Skipping: spread=" << spread_bps << "bps > max_spread_bps=" << max_spread_bps_;
+            logger().LogToClient(LOGLEVEL_DEBUG, oss.str());
+        }
+        return;
+    }
+
+    // 6) Build signal from normalized OFI
+    const double depth = CalculateDepth(top_quote);
+    const double signal = CalculateSignal(state, depth);
+    const double mid = CalculateMidPrice(top_quote);
+
+    const int current_position = portfolio().position(instr);
+
+    if (debug_) {
+        std::cout << instr->symbol()
+                  << " | Mid=" << mid
+                  << " | Bid=" << bid_size << "@" << bid
+                  << " | Ask=" << ask_size << "@" << ask
+                  << " | OFI=" << state.cumulative_ofi
+                  << " | Depth=" << depth
+                  << " | Signal=" << signal
+                  << " | Pos=" << current_position
+                  << std::endl;
+    }
+
+    int desired_position = current_position;
+
+    // Exit logic: if we have a position and signal crossed zero against us
+    if (current_position > 0 && signal <= 0.0) {
+        desired_position = 0;
+        if (debug_) {
+            logger().LogToClient(LOGLEVEL_DEBUG, "EXIT LONG signal - OFI reverted / flipped");
+        }
+    }
+    else if (current_position < 0 && signal >= 0.0) {
+        desired_position = 0;
+        if (debug_) {
+            logger().LogToClient(LOGLEVEL_DEBUG, "EXIT SHORT signal - OFI reverted / flipped");
+        }
+    }
+    // Entry / add logic
+    else if (std::abs(current_position) < max_inventory_) {
+        if (signal > entry_threshold_) {
+            desired_position = std::min(max_inventory_, current_position + position_size_);
+            if (debug_) {
+                ostringstream oss;
+                oss << "ENTRY/ADD LONG signal (signal=" << signal << " > " << entry_threshold_ << ")";
+                logger().LogToClient(LOGLEVEL_DEBUG, oss.str());
+            }
+        }
+        else if (signal < -entry_threshold_) {
+            desired_position = std::max(-max_inventory_, current_position - position_size_);
+            if (debug_) {
+                ostringstream oss;
+                oss << "ENTRY/ADD SHORT signal (signal=" << signal << " < -" << entry_threshold_ << ")";
+                logger().LogToClient(LOGLEVEL_DEBUG, oss.str());
+            }
+        }
+    }
+
+    // 8) Adjust portfolio if desired differs from current
+    if (desired_position != current_position) {
+        AdjustPortfolio(instr, desired_position);
+    }
 }
 
 void OFIStrategy::OnOrderUpdate(const OrderUpdateEventMsg& msg)
-{    
-	std::cout << "OnOrderUpdate(): " << msg.update_time() << msg.name() << std::endl;
-    if(msg.completes_order())
-    {
-		m_instrument_order_id_map[msg.order().instrument()] = 0;
-		std::cout << "OnOrderUpdate(): order is complete; " << std::endl;
+{
+    // Minimal bookkeeping / logging 
+    const Order& order = msg.order();
+
+    if (debug_) {
+        ostringstream oss;
+        oss << "OrderUpdate: " << order.instrument()->symbol()
+            << " | id=" << order.order_id()
+            << " | side=" << (IsBuySide(order.order_side()) ? "BUY" : "SELL")
+            << " | state=" << order.order_state();
+
+        logger().LogToClient(LOGLEVEL_DEBUG, oss.str());
     }
 }
-
-
 
 void OFIStrategy::OnStrategyCommand(const StrategyCommandEventMsg& msg)
 {
     switch (msg.command_id()) {
         case 1:
-//            RepriceAll();
-            break;
-        case 2:
             trade_actions()->SendCancelAll();
+            logger().LogToClient(LOGLEVEL_DEBUG, "Cancelled all orders via command");
             break;
         default:
             logger().LogToClient(LOGLEVEL_DEBUG, "Unknown strategy command received");
@@ -241,23 +250,179 @@ void OFIStrategy::OnStrategyCommand(const StrategyCommandEventMsg& msg)
 }
 
 void OFIStrategy::OnParamChanged(StrategyParam& param)
-{    
-	/*
-    if (param.param_name() == "aggressiveness") {                         
-        if (!param.Get(&m_aggressiveness))
-            throw StrategyStudioException("Could not get m_aggressiveness");
+{
+    if (param.param_name() == "ofi_window_seconds") {
+        if (!param.Get(&ofi_window_seconds_))
+            throw StrategyStudioException("Could not get ofi_window_seconds");
+    } else if (param.param_name() == "min_events_required") {
+        if (!param.Get(&min_events_required_))
+            throw StrategyStudioException("Could not get min_events_required");
+    } else if (param.param_name() == "entry_threshold") {
+        if (!param.Get(&entry_threshold_))
+            throw StrategyStudioException("Could not get entry_threshold");
+    } else if (param.param_name() == "impact_multiplier") {
+        if (!param.Get(&impact_multiplier_))
+            throw StrategyStudioException("Could not get impact_multiplier");
+    } else if (param.param_name() == "max_spread_bps") {
+        if (!param.Get(&max_spread_bps_))
+            throw StrategyStudioException("Could not get max_spread_bps");
+    } else if (param.param_name() == "max_inventory") {
+        if (!param.Get(&max_inventory_))
+            throw StrategyStudioException("Could not get max_inventory");
     } else if (param.param_name() == "position_size") {
-        if (!param.Get(&m_position_size))
-            throw StrategyStudioException("Could not get position size");
-    } else if (param.param_name() == "short_window_size") {
-        if (!param.Get(&m_short_window_size))
-            throw StrategyStudioException("Could not get trade size");
-    } else if (param.param_name() == "long_window_size") {
-        if (!param.Get(&m_long_window_size))
-            throw StrategyStudioException("Could not get long_window_size");
+        if (!param.Get(&position_size_))
+            throw StrategyStudioException("Could not get position_size");
     } else if (param.param_name() == "debug") {
-        if (!param.Get(&m_debug_on))
-            throw StrategyStudioException("Could not get trade size");
-    } 
-    */
+        if (!param.Get(&debug_))
+            throw StrategyStudioException("Could not get debug");
+    }
+}
+
+void OFIStrategy::AdjustPortfolio(const Instrument* instrument, int desired_position)
+{
+    int current_position = portfolio().position(instrument);
+    int trade_size = desired_position - current_position;
+
+    if (trade_size != 0) {
+        if (orders().num_working_orders(instrument) == 0) {
+            SendOrder(instrument, trade_size);
+        } else {
+            // If flipping direction, cancel first
+            const Order* order = *orders().working_orders_begin(instrument);
+            if (order && ((IsBuySide(order->order_side()) && trade_size < 0) ||
+                          (IsSellSide(order->order_side()) && trade_size > 0))) {
+                trade_actions()->SendCancelOrder(order->order_id());
+            }
+        }
+    }
+}
+
+void OFIStrategy::SendOrder(const Instrument* instrument, int trade_size)
+{
+    if (trade_size == 0) {
+        return;
+    }
+
+    const Quote& top_quote = instrument->top_quote();
+    if (!IsQuoteValid(top_quote)) {
+        return;
+    }
+
+    // Use mid as a reference price for logging; order type is MARKET for immediacy.
+    const double price = (top_quote.bid() + top_quote.ask()) / 2.0;
+
+    OrderParams params(*instrument,
+                       std::abs(trade_size),
+                       price,
+                       (instrument->type() == INSTRUMENT_TYPE_EQUITY) ? MARKET_CENTER_ID_NASDAQ : MARKET_CENTER_ID_CME_GLOBEX,
+                       (trade_size > 0) ? ORDER_SIDE_BUY : ORDER_SIDE_SELL,
+                       ORDER_TIF_DAY,
+                       ORDER_TYPE_MARKET);
+
+    trade_actions()->SendNewOrder(params);
+
+    if (debug_) {
+        std::ostringstream oss;
+        oss << "Sending MARKET " << ((trade_size > 0) ? "BUY" : "SELL")
+            << " order for " << instrument->symbol()
+            << " for " << std::abs(trade_size) << " units at ~" << price;
+        logger().LogToClient(LOGLEVEL_DEBUG, oss.str());
+    }
+}
+
+bool OFIStrategy::IsQuoteValid(const Quote& top_quote) const
+{
+    return (top_quote.bid() > 0.0 &&
+            top_quote.ask() > 0.0 &&
+            top_quote.ask() > top_quote.bid() &&
+            top_quote.bid_size() > 0 &&
+            top_quote.ask_size() > 0);
+}
+
+double OFIStrategy::ComputeOFIIncrement(const OFIInstrumentState& state,
+                                       double bid, int bid_size,
+                                       double ask, int ask_size) const
+{
+    // Implements the indicator form from Cont-Kukanov-Stoikov (2011):
+    // e_n = 1{Pb_n >= Pb_{n-1}} qB_n - 1{Pb_n <= Pb_{n-1}} qB_{n-1}
+    //     -1{Pa_n <= Pa_{n-1}} qA_n + 1{Pa_n >= Pa_{n-1}} qA_{n-1}
+    double e = 0.0;
+
+    if (bid >= state.prev_bid) {
+        e += static_cast<double>(bid_size);
+    }
+    if (bid <= state.prev_bid) {
+        e -= static_cast<double>(state.prev_bid_size);
+    }
+
+    if (ask <= state.prev_ask) {
+        e -= static_cast<double>(ask_size);
+    }
+    if (ask >= state.prev_ask) {
+        e += static_cast<double>(state.prev_ask_size);
+    }
+
+    return e;
+}
+
+void OFIStrategy::AddEventToWindow(OFIInstrumentState& state, double ofi_increment, Utilities::TimeType timestamp)
+{
+    state.window.emplace_back(timestamp, ofi_increment);
+    state.cumulative_ofi += ofi_increment;
+
+    if (debug_) {
+        ostringstream oss;
+        oss << "Added OFI event: inc=" << ofi_increment
+            << " | OFI=" << state.cumulative_ofi
+            << " | n=" << state.window.size();
+        logger().LogToClient(LOGLEVEL_DEBUG, oss.str());
+    }
+}
+
+void OFIStrategy::PruneOldEvents(OFIInstrumentState& state, Utilities::TimeType cutoff_time)
+{
+    int removed = 0;
+    while (!state.window.empty() && state.window.front().timestamp < cutoff_time) {
+        state.cumulative_ofi -= state.window.front().ofi_increment;
+        state.window.pop_front();
+        removed++;
+    }
+
+    if (debug_ && removed > 0) {
+        ostringstream oss;
+        oss << "Pruned " << removed << " OFI events | n=" << state.window.size()
+            << " | OFI=" << state.cumulative_ofi;
+        logger().LogToClient(LOGLEVEL_DEBUG, oss.str());
+    }
+}
+
+bool OFIStrategy::IsOFIReady(const OFIInstrumentState& state) const
+{
+    return static_cast<int>(state.window.size()) >= min_events_required_;
+}
+
+double OFIStrategy::CalculateMidPrice(const Quote& top_quote) const
+{
+    return (top_quote.bid() + top_quote.ask()) / 2.0;
+}
+
+double OFIStrategy::CalculateSpreadBps(const Quote& top_quote) const
+{
+    const double mid = CalculateMidPrice(top_quote);
+    if (mid <= 0.0) {
+        return 0.0;
+    }
+    return ((top_quote.ask() - top_quote.bid()) / mid) * 10000.0;
+}
+
+double OFIStrategy::CalculateDepth(const Quote& top_quote) const
+{
+    return (static_cast<double>(top_quote.bid_size()) + static_cast<double>(top_quote.ask_size())) / 2.0;
+}
+
+double OFIStrategy::CalculateSignal(const OFIInstrumentState& state, double depth) const
+{
+    // Normalized signal: OFI / (2 * depth) (scaled by impact_multiplier)
+    const double denom = std::max(1.0, 2.0 * depth);
+    return impact_multiplier_ * (state.cumulative_ofi / denom);
 }
