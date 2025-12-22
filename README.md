@@ -70,9 +70,9 @@ The VWAP serves as the intraday benchmark for "fair value." Our strategy assumes
 $$\text{Deviation (bps)} = \left( \frac{\text{Mid-Price}}{\text{VWAP}_{5\text{min}}} - 1 \right) \times 10,000$$
 
 ### 3.2 Order Book Imbalance (OBI) Filter
-To prevent trading into a trending market (the "falling knife" scenario), we use OBI as a confirmation signal. OBI measures the relative buy/sell pressure at the best bid and ask:
+To prevent trading into a trending market (the "falling knife" scenario), we use OBI as a confirmation signal. OBI measures the relative buy/sell pressure at the L1 to L3 bid and ask:
 
-$$\text{OBI} = \frac{\text{Bid Size}_1 - \text{Ask Size}_1}{\text{Bid Size}_1 + \text{Ask Size}_1}$$
+$$\text{OBI} = \frac{\text{Bid Size}_1-3 - \text{Ask Size}_1-3}{\text{Bid Size}_1-3 + \text{Ask Size}_1-3}$$
 
 ### 3.3 Signal Matrix
 The `generate_signals` function classifies market states into five categories based on a **2 bps threshold** and a **±0.5 OBI filter**:
@@ -137,4 +137,3 @@ The remaining loss is attributed to **Adverse Selection (Toxic Fills)**—a comm
 * **Solve Adverse Selection:** Incorporate Micro-Price or high-frequency momentum indicators to cancel resting orders before "toxic" fills occur.
 * **Dynamic Thresholds:** Replace the static ±2 bps threshold with an adaptive threshold that scales with rolling market volatility.
 * **Inventory Management:** The observed ~$56 drawdown suggests the need for tighter stop-losses or time-based inventory dumps to prevent holding positions during adverse trends.
-* **Signal Expansion:** Use deeper order book levels (L2/L3) to calculate a more robust "weighted" imbalance signal.
